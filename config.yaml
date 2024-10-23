@@ -1,0 +1,6 @@
+path: C:\Users\tyson\Desktop\image-segmentation-yolov8\data
+train: images/train 
+val: images/val  
+
+nc: 1
+names: ['trunk']
