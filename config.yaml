@@ -1,4 +1,4 @@
-path: C:/Users/tyson/Desktop/tree-segmentation/data
+path: /home/ubuntu/tree-YOLO/data
 train: images/train
 val: images/val
 
