@@ -1,15 +1,35 @@
 from ultralytics import YOLO
+import os
+import torch
 
-model = YOLO('yolov8n-seg.pt', weights_only=True)
+if __name__ == '__main__':
+    batch_sizes = [4, 8, 16, 32]
+    learning_rates = [0.001, 0.005, 0.01, 0.02]
 
-batch_size = 4
-num_epochs = 20
-learning_rate = 0.001
+    num_epochs = 50
+    momentum = 0.9
+    img_size = 512
 
-model.train(
-    data='config.yaml',
-    epochs=num_epochs,
-    imgsz=512,
-    batch=batch_size,
-    lr0=learning_rate
-)
+    output_dir = "trained_models"
+    os.makedirs(output_dir, exist_ok=True)
+
+    for batch_size in batch_sizes:
+        for learning_rate in learning_rates:
+            model = YOLO('yolov8n-seg.pt')
+            
+            print(f"Training with batch size: {batch_size}, learning rate: {learning_rate}")
+
+            model_name = f"model_bs{batch_size}_lr{learning_rate}"
+            
+            model.train(
+                data='config.yaml',
+                optimizer="SGD",
+                project='trained_models',
+                name=model_name,
+                device=0,
+                momentum=momentum,
+                epochs=num_epochs,
+                imgsz=img_size,
+                batch=batch_size,
+                lr0=learning_rate
+            )

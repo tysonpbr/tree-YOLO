@@ -18,10 +18,14 @@ if __name__ == '__main__':
             model = YOLO('yolov8n-seg.pt')
             
             print(f"Training with batch size: {batch_size}, learning rate: {learning_rate}")
+
+            model_name = f"model_bs{batch_size}_lr{learning_rate}"
             
             model.train(
                 data='config.yaml',
                 optimizer="SGD",
+                project='trained_models',
+                name=model_name,
                 device=0,
                 momentum=momentum,
                 epochs=num_epochs,
@@ -29,10 +33,3 @@ if __name__ == '__main__':
                 batch=batch_size,
                 lr0=learning_rate
             )
-            
-            model_path = os.path.join(
-                output_dir, 
-                f"model_bs{batch_size}_lr{learning_rate}.pt"
-            )
-            model.export(format="torchscript", path=model_path)
-            print(f"Model saved as {model_path}")
