@@ -1,0 +1,16 @@
+model_bs16_lr0.001 Accuracy: 0.9778432210286458
+model_bs16_lr0.005 Accuracy: 0.9779781901041666
+model_bs16_lr0.01 Accuracy: 0.9778452860514323
+model_bs16_lr0.02 Accuracy: 0.9766452433268229
+model_bs32_lr0.001 Accuracy: 0.975891103108724
+model_bs32_lr0.005 Accuracy: 0.9793962097167969  
+model_bs32_lr0.01 Accuracy: 0.9795321553548177   
+model_bs32_lr0.02 Accuracy: 0.978914774576823
+model_bs4_lr0.001 Accuracy: 0.9783635457356771
+model_bs4_lr0.005 Accuracy: 0.9763635762532552
+model_bs4_lr0.01 Accuracy: 0.9796413167317708    
+model_bs4_lr0.02 Accuracy: 0.9779584147135416
+model_bs8_lr0.001 Accuracy: 0.978931131998698
+model_bs8_lr0.005 Accuracy: 0.9796657613118489    
+model_bs8_lr0.01 Accuracy: 0.9794458312988281     
+model_bs8_lr0.02 Accuracy: 0.9764235534667969 

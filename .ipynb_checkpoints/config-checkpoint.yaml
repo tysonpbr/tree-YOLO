@@ -1,6 +1,0 @@
-path: /home/ubuntu/Training-Trunks/tree-YOLO/data
-train: images/train
-val: images/val
-
-nc: 1
-names: ['tree trunk']
