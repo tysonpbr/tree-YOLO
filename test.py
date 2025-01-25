@@ -38,6 +38,7 @@ def find_largest_white_rectangle(mask):
                     max_area = area
                     x = stack[-1] + 1 if stack else 0
                     best_coords = (x, r - H + 1, W, H)
+                    
             stack.append(c)
 
     return best_coords

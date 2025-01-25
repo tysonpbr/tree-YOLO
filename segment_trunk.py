@@ -1,35 +1,57 @@
 import os
 import torch
-from sklearn.metrics import jaccard_score, accuracy_score
 from ultralytics import YOLO
-from torchvision import transforms
-from PIL import Image
 import numpy as np
-import matplotlib.pyplot as plt
-import torchvision.models.segmentation as models
-from model import U2NET, U2NETP
 import cv2
 
-test_images_path = "data/test/real/"
+current_model_path = 'trained_models/model_bs32_lr0.01/weights/best.pt'
 
-results_path = "results_real/"
+test_images_path = "data/images/real/"
 
-results_path_yolov8 = "results_real/yolov8"
-results_path_u2net = "results_real/u2net"
-results_path_deeplabv3 = "results_real/deeplabv3"
+results_path_masks = "results/real/masks/"
+results_path_combined = "results/real/combined/"
+results_path_cropped = "results/real/cropped/"
 
-# Ensure results directories exist
-os.makedirs(results_path_yolov8, exist_ok=True)
-os.makedirs(results_path_u2net, exist_ok=True)
-os.makedirs(results_path_deeplabv3, exist_ok=True)
+os.makedirs(results_path_masks, exist_ok=True)
+os.makedirs(results_path_combined, exist_ok=True)
+os.makedirs(results_path_cropped, exist_ok=True)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model_paths = {
-    "YOLOv8": "models/yolov8_model.pt",
-    "U2Net": "models/u2net_model.pth",
-    "DeepLabv3": "models/deeplabv3_model.pth"
-}
+model = YOLO(current_model_path)
+
+def find_largest_white_rectangle(mask):
+    rows, cols = mask.shape
+
+    height = np.zeros((rows, cols), dtype=int)
+    height[0, :] = mask[0, :]
+    for r in range(1, rows):
+        height[r, :] = np.where(mask[r, :] != 0, height[r - 1, :] + 1, 0)
+
+    max_area = 0
+    best_coords = (0, 0, 0, 0)
+
+    for r in range(rows):
+        if np.max(mask[r, :]) == 0:
+            continue
+        stack = []
+        for c in range(cols + 1):
+            h = height[r, c] if c < cols else 0 
+            while stack and h < height[r, stack[-1]]:
+                H = height[r, stack.pop()]
+                W = c if not stack else c - stack[-1] - 1
+                area = H * W
+                if area > max_area:
+                    max_area = area
+                    x = stack[-1] + 1 if stack else 0
+                    best_coords = (x, r - H + 1, W, H)
+
+                    if area >= (rows*cols / 6):
+                       return best_coords
+                    
+            stack.append(c)
+
+    return best_coords
 
 def resize_and_pad(image, target_size=512):
     h, w = image.shape[:2]
@@ -47,109 +69,60 @@ def resize_and_pad(image, target_size=512):
 
 def resize_mask_to_original(mask, padding_info):
     top, bottom, left, right, original_size = padding_info
-    mask = mask[top:512-bottom, left:512-right]  # Remove padding
+    mask = mask[top:512-bottom, left:512-right]
     mask_resized = cv2.resize(mask, (original_size[1], original_size[0]), interpolation=cv2.INTER_NEAREST)
     return mask_resized
 
-def getResultsYolov8(path):
-    model = YOLO(path)
-    test_images = sorted(os.listdir(test_images_path))
+def getResultsYolov8(image):
+    image_resize, padding_info = resize_and_pad(image)
 
-    for image_name in test_images:
-        image_path = os.path.join(test_images_path, image_name)
-        image = cv2.imread(image_path)
-        image, padding_info = resize_and_pad(image)
+    results = model(image_resize)
+    
+    for result in results:
+        if result.masks:
+            for j, mask in enumerate(result.masks.data):
+                if j == 0:
+                    mask = mask.cpu().numpy() * 255
+                    mask = resize_mask_to_original(mask.astype(np.uint8), padding_info)
 
-        results = model(image)
-        
-        for result in results:
-            if result.masks:
-                for j, mask in enumerate(result.masks.data):
-                    if j == 0:
-                        mask = mask.numpy() * 255
-                        mask = resize_mask_to_original(mask.astype(np.uint8), padding_info)
-                        output_path = os.path.join(results_path_yolov8, f"{os.path.splitext(image_name)[0]}_output.png")
-                        cv2.imwrite(output_path, mask)
+                    binary_mask = (mask > 128).astype(np.uint8)
+                    combined = cv2.bitwise_and(image, image, mask=binary_mask)
 
-def getResultsU2net(path):
-    image_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    model = U2NET(3, 1)
-    model.load_state_dict(torch.load(path, map_location=device, weights_only=True))
-    model.to(device)
-    model.eval()
+                    largest_rect = find_largest_white_rectangle(binary_mask)
+                    x, y, w, h = largest_rect
 
-    test_images = sorted(os.listdir(test_images_path))
+                    cropped = image[y:y+h, x:x+w]
 
-    for image_name in test_images:
-        image_path = os.path.join(test_images_path, image_name)
-        image = cv2.imread(image_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image, padding_info = resize_and_pad(image)
-        image_tensor = image_transform(Image.fromarray(image)).unsqueeze(0).to(device)
-        
-        with torch.no_grad():
-            d0, _, _, _, _, _, _ = model(image_tensor)
-            predicted_mask = d0.squeeze(0).squeeze(0).cpu().numpy()
-
-        threshold = 0.5
-        predicted_mask = (predicted_mask > threshold).astype(np.uint8)
-        predicted_mask = resize_mask_to_original(predicted_mask, padding_info)
-
-        output_path = os.path.join(results_path_u2net, f"{os.path.splitext(image_name)[0]}_output.png")
-        plt.imsave(output_path, predicted_mask, cmap="gray")
-
-def getResultsDeeplabv3(path):
-    image_transform = transforms.Compose([
-        transforms.ToTensor()
-    ])
-    num_classes = 2
-    model = models.deeplabv3_resnet50(weights=None)
-    model.classifier[4] = torch.nn.Conv2d(256, num_classes, kernel_size=(1, 1))
-
-    state_dict = torch.load(path, map_location=device, weights_only=True)
-    filtered_state_dict = {k: v for k, v in state_dict.items() if not k.startswith("aux_classifier")}
-    model.load_state_dict(filtered_state_dict, strict=False)
-
-    model.to(device)
-    model.eval()
-
-    test_images = sorted(os.listdir(test_images_path))
-
-
-    for image_name in test_images:
-        image_path = os.path.join(test_images_path, image_name)
-        image = cv2.imread(image_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image, padding_info = resize_and_pad(image)
-        image_tensor = image_transform(Image.fromarray(image)).unsqueeze(0).to(device)
-        
-        with torch.no_grad():
-            output = model(image_tensor)["out"]
-            predicted_mask = torch.argmax(output, dim=1).squeeze(0).cpu().numpy()
-
-        predicted_mask = resize_mask_to_original(predicted_mask, padding_info)
-
-        output_path = os.path.join(results_path_deeplabv3, f"{os.path.splitext(image_name)[0]}_output.png")
-        plt.imsave(output_path, predicted_mask, cmap="gray")
+                    return mask, combined, cropped
+                
+    return None, None, None
 
 if __name__ == "__main__":
     print(f"Using device: {device}")
 
-    for name, path in model_paths.items():
-        print(f"Starting Testing for {name}".ljust(50), end="")
-        print('')
+    test_images = sorted(os.listdir(test_images_path))
 
-        if name == "YOLOv8":
-            getResultsYolov8(path)
-        if name == "U2Net":
-            getResultsU2net(path)
-        if name == "DeepLabv3":
-            getResultsDeeplabv3(path)
+    for image_name in test_images:
+        image_path = os.path.join(test_images_path, image_name)
+        image = cv2.imread(image_path)
 
-        print(f"\rCompleted Testing for {name}".ljust(50), end="")
-        print('')
+        if image is None:
+            print(f"Failed to read image: {image_name}. Skipping...")
+            continue
+
+        mask, combined, cropped = getResultsYolov8(image)
+
+        if mask is not None:
+            output_path = os.path.join(results_path_masks, f"{os.path.splitext(image_name)[0]}.png")
+            cv2.imwrite(output_path, mask)
+            
+            output_path = os.path.join(results_path_combined, f"{os.path.splitext(image_name)[0]}.png")
+            cv2.imwrite(output_path, combined)
+            
+            output_path = os.path.join(results_path_cropped, f"{os.path.splitext(image_name)[0]}.png")
+            cv2.imwrite(output_path, cropped)
+
+        else:
+            print(f"No mask detected for {image_name}.")
 
     print("Testing complete.")
