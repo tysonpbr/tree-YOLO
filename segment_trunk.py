@@ -71,7 +71,6 @@ def adjust_coordinates(coords, padding_info):
     scale, top, bottom, left, right, original_size = padding_info
     x, y, w, h = coords
 
-    # Adjust for padding and scale back to the original size
     x = int((x - left) / scale)
     y = int((y - top) / scale)
     w = int(w / scale)
