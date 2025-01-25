@@ -46,7 +46,7 @@ def find_largest_white_rectangle(mask):
                     x = stack[-1] + 1 if stack else 0
                     best_coords = (x, r - H + 1, W, H)
 
-                    if area >= (rows*cols / 6):
+                    if area >= (rows * cols / 6):
                        return best_coords
                     
             stack.append(c)
@@ -65,10 +65,22 @@ def resize_and_pad(image, target_size=512):
     left, right = delta_w // 2, delta_w - delta_w // 2
     
     padded_image = cv2.copyMakeBorder(resized_image, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0, 0, 0])
-    return padded_image, (top, bottom, left, right, (h, w))
+    return padded_image, (scale, top, bottom, left, right, (h, w))
+
+def adjust_coordinates(coords, padding_info):
+    scale, top, bottom, left, right, original_size = padding_info
+    x, y, w, h = coords
+
+    # Adjust for padding and scale back to the original size
+    x = int((x - left) / scale)
+    y = int((y - top) / scale)
+    w = int(w / scale)
+    h = int(h / scale)
+
+    return x, y, w, h
 
 def resize_mask_to_original(mask, padding_info):
-    top, bottom, left, right, original_size = padding_info
+    _, top, bottom, left, right, original_size = padding_info
     mask = mask[top:512-bottom, left:512-right]
     mask_resized = cv2.resize(mask, (original_size[1], original_size[0]), interpolation=cv2.INTER_NEAREST)
     return mask_resized
@@ -83,14 +95,16 @@ def getResultsYolov8(image):
             for j, mask in enumerate(result.masks.data):
                 if j == 0:
                     mask = mask.cpu().numpy() * 255
-                    mask = resize_mask_to_original(mask.astype(np.uint8), padding_info)
-
                     binary_mask = (mask > 128).astype(np.uint8)
-                    combined = cv2.bitwise_and(image, image, mask=binary_mask)
 
                     largest_rect = find_largest_white_rectangle(binary_mask)
-                    x, y, w, h = largest_rect
 
+                    adjusted_coords = adjust_coordinates(largest_rect, padding_info)
+                    x, y, w, h = adjusted_coords
+
+                    mask = resize_mask_to_original(mask.astype(np.uint8), padding_info)
+
+                    combined = cv2.bitwise_and(image, image, mask=mask)
                     cropped = image[y:y+h, x:x+w]
 
                     return mask, combined, cropped
